@@ -96,23 +96,38 @@ def get_changed_files_summary():
         return "Нет изменений"
     
     files_info = []
+    file_types = {'added': [], 'modified': [], 'deleted': [], 'renamed': [], 'new': []}
+    
     for line in status.split('\n'):
         if line.strip():
             status_code = line[:2]
             filename = line[3:]
             
             if status_code.strip() == 'A':
-                files_info.append(f"Добавлен: {filename}")
+                file_types['added'].append(filename)
             elif status_code.strip() == 'M':
-                files_info.append(f"Изменен: {filename}")
+                file_types['modified'].append(filename)
             elif status_code.strip() == 'D':
-                files_info.append(f"Удален: {filename}")
+                file_types['deleted'].append(filename)
             elif status_code.strip() == 'R':
-                files_info.append(f"Переименован: {filename}")
+                file_types['renamed'].append(filename)
             elif '?' in status_code:
-                files_info.append(f"Новый: {filename}")
+                file_types['new'].append(filename)
     
-    return '\n'.join(files_info)
+    # Создаем более структурированное описание
+    summary_parts = []
+    if file_types['new']:
+        summary_parts.append(f"Новые файлы: {', '.join(file_types['new'])}")
+    if file_types['added']:
+        summary_parts.append(f"Добавлены: {', '.join(file_types['added'])}")
+    if file_types['modified']:
+        summary_parts.append(f"Изменены: {', '.join(file_types['modified'])}")
+    if file_types['deleted']:
+        summary_parts.append(f"Удалены: {', '.join(file_types['deleted'])}")
+    if file_types['renamed']:
+        summary_parts.append(f"Переименованы: {', '.join(file_types['renamed'])}")
+    
+    return '\n'.join(summary_parts), file_types
 
 def clean_commit_message(message):
     """Очистить сообщение коммита от лишнего текста"""
@@ -216,16 +231,6 @@ def clean_commit_message(message):
     message = message.lstrip('.')
     message = message.strip()
     
-    # Если сообщение все еще содержит мусор, используем fallback
-    if len(message) > 100 or any(word in message.lower() for word in ['okay', 'user wants', 'task is', 'let me']):
-        # Ищем ключевые слова для автогенерации
-        if 'test.py' in message.lower() or 'новый файл' in message.lower():
-            message = "Добавил новый файл"
-        elif 'add' in message.lower() and 'file' in message.lower():
-            message = "Добавил файл"
-        else:
-            message = "Обновил код"
-    
     # Ограничиваем длину
     if len(message) > 50:
         message = message[:47] + '...'
@@ -233,17 +238,104 @@ def clean_commit_message(message):
     # Убираем точку в конце
     message = message.rstrip('.')
     
-    # Если результат пустой или слишком короткий, используем fallback
+    # Если результат пустой или слишком короткий, возвращаем None для fallback
     if not message or len(message) < 3:
-        message = "Обновил код"
+        return None
     
     return message
+
+def generate_fallback_commit_message(file_types, diff_content):
+    """Генерировать fallback сообщение коммита на основе анализа файлов"""
+    
+    # Анализируем типы изменений
+    total_files = sum(len(files) for files in file_types.values())
+    
+    if file_types['new']:
+        # Новые файлы - анализируем что добавлено
+        new_files = file_types['new']
+        
+        if any('.py' in f for f in new_files):
+            return "Добавил Python скрипты"
+        elif any('.js' in f or '.ts' in f for f in new_files):
+            return "Добавил JavaScript файлы"
+        elif any('.html' in f for f in new_files):
+            return "Добавил HTML страницы"
+        elif any('.css' in f for f in new_files):
+            return "Добавил стили CSS"
+        elif any('.md' in f for f in new_files):
+            return "Добавил документацию"
+        elif any('.json' in f for f in new_files):
+            return "Добавил конфигурационные файлы"
+        elif any('test' in f.lower() for f in new_files):
+            return "Добавил тесты"
+        else:
+            if len(new_files) == 1:
+                return f"Добавил {new_files[0]}"
+            else:
+                return f"Добавил {len(new_files)} новых файлов"
+    
+    elif file_types['modified']:
+        # Изменены существующие файлы - анализируем diff
+        modified_files = file_types['modified']
+        
+        if diff_content:
+            # Анализируем содержимое diff
+            diff_lower = diff_content.lower()
+            
+            if 'def ' in diff_lower or 'function' in diff_lower:
+                return "Обновил функции"
+            elif 'class ' in diff_lower:
+                return "Обновил классы"
+            elif 'import ' in diff_lower or 'from ' in diff_lower:
+                return "Обновил импорты"
+            elif 'config' in diff_lower or 'settings' in diff_lower:
+                return "Обновил конфигурацию"
+            elif 'test' in diff_lower:
+                return "Обновил тесты"
+            elif 'fix' in diff_lower or 'bug' in diff_lower or 'error' in diff_lower:
+                return "Исправил ошибки"
+            elif any(word in diff_lower for word in ['style', 'css', 'color', 'font']):
+                return "Обновил стили"
+            elif any(word in diff_lower for word in ['readme', 'doc', 'comment']):
+                return "Обновил документацию"
+        
+        # Анализируем по типам файлов
+        if any('.py' in f for f in modified_files):
+            return "Обновил Python код"
+        elif any('.js' in f or '.ts' in f for f in modified_files):
+            return "Обновил JavaScript код"
+        elif any('.html' in f for f in modified_files):
+            return "Обновил HTML разметку"
+        elif any('.css' in f for f in modified_files):
+            return "Обновил стили"
+        elif any('.md' in f for f in modified_files):
+            return "Обновил документацию"
+        elif any('.json' in f for f in modified_files):
+            return "Обновил конфигурацию"
+        else:
+            if len(modified_files) == 1:
+                return f"Обновил {modified_files[0]}"
+            else:
+                return f"Обновил {len(modified_files)} файлов"
+    
+    elif file_types['deleted']:
+        deleted_files = file_types['deleted']
+        if len(deleted_files) == 1:
+            return f"Удалил {deleted_files[0]}"
+        else:
+            return f"Удалил {len(deleted_files)} файлов"
+    
+    elif file_types['renamed']:
+        return "Переименовал файлы"
+    
+    # Общий fallback
+    return "Обновил код"
 
 def generate_commit_message(diff_content, status_content, files_info=None):
     """Генерировать сообщение коммита через LM Studio"""
     
     # Получаем краткое описание файлов
-    files_summary = get_changed_files_summary()
+    files_summary, file_types = get_changed_files_summary()
     
     # Дополнительная информация о файлах
     file_context = ""
@@ -298,9 +390,13 @@ Diff (отрывок):
             message = result['choices'][0]['message']['content'].strip()
             
             # Очищаем ответ
-            message = clean_commit_message(message)
+            cleaned_message = clean_commit_message(message)
             
-            return message
+            # Если очистка не дала результата, используем fallback
+            if not cleaned_message:
+                return generate_fallback_commit_message(file_types, diff_content)
+            
+            return cleaned_message
         else:
             print(f"Ошибка LM Studio API: {response.status_code}")
             return None
