@@ -24,11 +24,17 @@ except ImportError:
     TIMEOUT = 30
     MAX_DIFF_SIZE = 2000
 
-def run_git_command(command, show_output=False):
+def run_git_command(command, show_output=False, args_list=None):
     """Выполнить git команду и вернуть результат"""
     try:
+        # Если передан список аргументов, используем его (для команд с русским текстом)
+        if args_list:
+            cmd_args = args_list
+        else:
+            cmd_args = command.split()
+            
         result = subprocess.run(
-            command.split(), 
+            cmd_args, 
             capture_output=True, 
             text=True, 
             check=True
@@ -119,29 +125,86 @@ def clean_commit_message(message):
     # Убираем лишние пробелы
     message = message.strip()
     
-    # Если есть переносы строк, берем только первую строку
+    # Убираем теги <think> и </think>
+    import re
+    message = re.sub(r'</?think>', '', message, flags=re.IGNORECASE)
+    message = message.strip()
+    
+    # Если есть переносы строк, пытаемся найти полезное содержимое
     if '\n' in message:
-        message = message.split('\n')[0].strip()
+        lines = message.split('\n')
+        # Ищем строку, которая выглядит как коммит (начинается с глагола)
+        for line in lines:
+            line = line.strip()
+            if line and not line.lower().startswith(('okay', 'the ', 'let me', 'i ', 'user')):
+                # Проверяем, что строка начинается с русского глагола
+                if any(line.lower().startswith(verb) for verb in ['добавил', 'исправил', 'обновил', 'удалил', 'создал', 'изменил']):
+                    message = line
+                    break
+        else:
+            # Если не нашли подходящую строку, берем первую непустую
+            for line in lines:
+                line = line.strip()
+                if line and len(line) > 5:  # Минимальная длина для осмысленного коммита
+                    message = line
+                    break
+    
+    # Убираем "think" и подобные слова в начале
+    think_patterns = [
+        'think:',
+        'think ',
+        'think\n',
+        'i think:',
+        'i think ',
+        'let me think',
+        'думаю:',
+        'думаю ',
+        'думаю,',
+        'я думаю',
+        'let me',
+        'well,',
+        'хорошо,',
+        'итак,',
+        'okay,',
+        'the user',
+        'user wants'
+    ]
+    
+    message_lower = message.lower()
+    for pattern in think_patterns:
+        if message_lower.startswith(pattern):
+            message = message[len(pattern):].strip()
+            message_lower = message.lower()
+            break
     
     # Убираем объяснительные фразы
     cleanup_patterns = [
-        'Сообщение коммита:',
-        'Коммит:',
-        'Ответ:',
-        'Гит коммит:',
+        'сообщение коммита:',
+        'коммит:',
+        'ответ:',
+        'гит коммит:',
         'git commit:',
         'commit:',
-        'Git:',
-        'Я создал',
-        'Я создам',
-        'Можно создать',
-        'Предлагаю',
-        'Вот сообщение',
-        'Можно использовать'
+        'git:',
+        'я создал',
+        'я создам',
+        'можно создать',
+        'предлагаю',
+        'вот сообщение',
+        'можно использовать',
+        'commit message:',
+        'the commit:',
+        'here is:',
+        'this is:',
+        'вот:',
+        'это:',
+        'wants a',
+        'task is to',
+        'about the'
     ]
     
     for pattern in cleanup_patterns:
-        if message.lower().startswith(pattern.lower()):
+        if message_lower.startswith(pattern):
             message = message[len(pattern):].strip()
             break
     
@@ -149,12 +212,30 @@ def clean_commit_message(message):
     message = message.lstrip(':')
     message = message.strip()
     
+    # Убираем многоточие в начале
+    message = message.lstrip('.')
+    message = message.strip()
+    
+    # Если сообщение все еще содержит мусор, используем fallback
+    if len(message) > 100 or any(word in message.lower() for word in ['okay', 'user wants', 'task is', 'let me']):
+        # Ищем ключевые слова для автогенерации
+        if 'test.py' in message.lower() or 'новый файл' in message.lower():
+            message = "Добавил новый файл"
+        elif 'add' in message.lower() and 'file' in message.lower():
+            message = "Добавил файл"
+        else:
+            message = "Обновил код"
+    
     # Ограничиваем длину
     if len(message) > 50:
         message = message[:47] + '...'
     
     # Убираем точку в конце
     message = message.rstrip('.')
+    
+    # Если результат пустой или слишком короткий, используем fallback
+    if not message or len(message) < 3:
+        message = "Обновил код"
     
     return message
 
@@ -269,8 +350,11 @@ def main():
         print("❌ Коммит отменен")
         return
     
-    # Создаем коммит
-    commit_result = run_git_command(f'git commit -m "{commit_message}"')
+    # Создаем коммит (используем список аргументов для правильной работы с русским текстом)
+    commit_result = run_git_command(
+        "git commit", 
+        args_list=["git", "commit", "-m", commit_message]
+    )
     if commit_result is not None:
         print("✅ Коммит успешно создан!")
         
