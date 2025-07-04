@@ -244,6 +244,183 @@ def clean_commit_message(message):
     
     return message
 
+def analyze_file_content_changes(diff_content):
+    """Анализировать содержимое изменений в файлах"""
+    if not diff_content:
+        return {}
+    
+    analysis = {
+        'functions_added': [],
+        'functions_modified': [],
+        'functions_removed': [],
+        'classes_added': [],
+        'classes_modified': [],
+        'imports_added': [],
+        'imports_removed': [],
+        'variables_added': [],
+        'comments_added': [],
+        'lines_added': 0,
+        'lines_removed': 0,
+        'files_changed': [],
+        'config_changes': [],
+        'style_changes': [],
+        'test_changes': [],
+        'bug_fixes': [],
+        'features': []
+    }
+    
+    lines = diff_content.split('\n')
+    current_file = None
+    
+    for line in lines:
+        # Определяем текущий файл
+        if line.startswith('diff --git') or line.startswith('+++'):
+            if 'b/' in line:
+                current_file = line.split('b/')[-1].strip()
+                if current_file not in analysis['files_changed']:
+                    analysis['files_changed'].append(current_file)
+        
+        # Считаем добавленные и удаленные строки
+        if line.startswith('+') and not line.startswith('+++'):
+            analysis['lines_added'] += 1
+            line_content = line[1:].strip()
+            
+            # Анализируем добавленные строки
+            if line_content:
+                # Функции
+                if line_content.startswith('def ') and '(' in line_content:
+                    func_name = line_content.split('def ')[1].split('(')[0].strip()
+                    analysis['functions_added'].append(func_name)
+                elif line_content.startswith('function ') and '(' in line_content:
+                    func_name = line_content.split('function ')[1].split('(')[0].strip()
+                    analysis['functions_added'].append(func_name)
+                
+                # Классы
+                elif line_content.startswith('class '):
+                    class_name = line_content.split('class ')[1].split('(')[0].split(':')[0].strip()
+                    analysis['classes_added'].append(class_name)
+                
+                # Импорты
+                elif line_content.startswith('import ') or line_content.startswith('from '):
+                    analysis['imports_added'].append(line_content)
+                
+                # Переменные и константы
+                elif '=' in line_content and not line_content.startswith('#'):
+                    var_name = line_content.split('=')[0].strip()
+                    if var_name.isupper():  # Константы
+                        analysis['variables_added'].append(var_name)
+                
+                # Комментарии
+                elif line_content.startswith('#') or line_content.startswith('//'):
+                    analysis['comments_added'].append(line_content)
+                
+                # Анализ ключевых слов
+                line_lower = line_content.lower()
+                
+                # Исправления багов
+                if any(word in line_lower for word in ['fix', 'bug', 'error', 'исправ', 'ошибк', 'баг']):
+                    analysis['bug_fixes'].append(line_content)
+                
+                # Новые фичи
+                elif any(word in line_lower for word in ['feature', 'add', 'new', 'нов', 'добав', 'функция']):
+                    analysis['features'].append(line_content)
+                
+                # Конфигурация
+                elif any(word in line_lower for word in ['config', 'setting', 'env', 'конфиг', 'настройк']):
+                    analysis['config_changes'].append(line_content)
+                
+                # Стили
+                elif any(word in line_lower for word in ['style', 'css', 'color', 'font', 'margin', 'padding', 'стиль']):
+                    analysis['style_changes'].append(line_content)
+                
+                # Тесты
+                elif any(word in line_lower for word in ['test', 'assert', 'expect', 'тест']):
+                    analysis['test_changes'].append(line_content)
+        
+        elif line.startswith('-') and not line.startswith('---'):
+            analysis['lines_removed'] += 1
+            line_content = line[1:].strip()
+            
+            # Анализируем удаленные строки
+            if line_content.startswith('def ') and '(' in line_content:
+                func_name = line_content.split('def ')[1].split('(')[0].strip()
+                analysis['functions_removed'].append(func_name)
+            elif line_content.startswith('import ') or line_content.startswith('from '):
+                analysis['imports_removed'].append(line_content)
+    
+    return analysis
+
+def generate_smart_commit_message(analysis, file_types):
+    """Генерировать умное сообщение коммита на основе анализа содержимого"""
+    
+    # Приоритетные сообщения на основе содержимого
+    
+    # 1. Исправления багов (максимальный приоритет)
+    if analysis['bug_fixes']:
+        if len(analysis['bug_fixes']) == 1:
+            return "Исправил ошибку"
+        else:
+            return f"Исправил {len(analysis['bug_fixes'])} ошибок"
+    
+    # 2. Новые функции и классы
+    if analysis['functions_added']:
+        if len(analysis['functions_added']) == 1:
+            func_name = analysis['functions_added'][0]
+            if len(func_name) < 20:  # Если имя короткое
+                return f"Добавил функцию {func_name}"
+            else:
+                return "Добавил новую функцию"
+        else:
+            return f"Добавил {len(analysis['functions_added'])} функций"
+    
+    if analysis['classes_added']:
+        if len(analysis['classes_added']) == 1:
+            class_name = analysis['classes_added'][0]
+            if len(class_name) < 20:
+                return f"Добавил класс {class_name}"
+            else:
+                return "Добавил новый класс"
+        else:
+            return f"Добавил {len(analysis['classes_added'])} классов"
+    
+    # 3. Удаления
+    if analysis['functions_removed']:
+        if len(analysis['functions_removed']) == 1:
+            return f"Удалил функцию {analysis['functions_removed'][0]}"
+        else:
+            return f"Удалил {len(analysis['functions_removed'])} функций"
+    
+    # 4. Импорты
+    if analysis['imports_added'] and not analysis['imports_removed']:
+        return "Добавил импорты"
+    elif analysis['imports_removed'] and not analysis['imports_added']:
+        return "Удалил импорты"
+    elif analysis['imports_added'] and analysis['imports_removed']:
+        return "Обновил импорты"
+    
+    # 5. Специальные типы изменений
+    if analysis['test_changes']:
+        return "Обновил тесты"
+    
+    if analysis['config_changes']:
+        return "Обновил конфигурацию"
+    
+    if analysis['style_changes']:
+        return "Обновил стили"
+    
+    # 6. Общие фичи
+    if analysis['features']:
+        return "Добавил новые возможности"
+    
+    # 7. По статистике строк
+    if analysis['lines_added'] > analysis['lines_removed'] * 3:  # Много добавлено
+        return f"Добавил {analysis['lines_added']} строк кода"
+    elif analysis['lines_removed'] > analysis['lines_added'] * 2:  # Много удалено
+        return f"Удалил {analysis['lines_removed']} строк кода"
+    
+    # 8. По типам файлов (как fallback)
+    return generate_fallback_commit_message(file_types, "")
+
 def generate_fallback_commit_message(file_types, diff_content):
     """Генерировать fallback сообщение коммита на основе анализа файлов"""
     
@@ -436,13 +613,34 @@ def main():
     
     print("\n🤖 Генерирую сообщение коммита...")
     
-    # Генерируем сообщение коммита с дополнительной информацией
-    commit_message = generate_commit_message(diff, status, files_info)
+    # Сначала пробуем умный анализ содержимого
+    print("🔍 Анализирую содержимое изменений...")
+    content_analysis = analyze_file_content_changes(diff)
     
-    if not commit_message:
-        print("❌ Не удалось сгенерировать сообщение коммита")
-        fallback_message = input("Введите сообщение коммита вручную: ")
-        commit_message = fallback_message if fallback_message else "Автоматический коммит"
+    # Получаем типы файлов
+    _, file_types = get_changed_files_summary()
+    
+    # Пробуем сгенерировать умное сообщение на основе анализа
+    smart_message = generate_smart_commit_message(content_analysis, file_types)
+    
+    if smart_message and smart_message != "Обновил код":
+        print(f"✨ Создал сообщение на основе анализа содержимого")
+        commit_message = smart_message
+    else:
+        # Если умный анализ не дал результата, пробуем LM Studio
+        print("🤖 Генерирую сообщение через LM Studio...")
+        commit_message = generate_commit_message(diff, status, files_info)
+        
+        if not commit_message:
+            print("❌ Не удалось сгенерировать сообщение коммита")
+            print("📊 Статистика анализа:")
+            print(f"   - Функций добавлено: {len(content_analysis.get('functions_added', []))}")
+            print(f"   - Классов добавлено: {len(content_analysis.get('classes_added', []))}")
+            print(f"   - Строк добавлено: {content_analysis.get('lines_added', 0)}")
+            print(f"   - Строк удалено: {content_analysis.get('lines_removed', 0)}")
+            
+            fallback_message = input("Введите сообщение коммита вручную: ")
+            commit_message = fallback_message if fallback_message else smart_message
     
     print(f"\n📋 Сообщение коммита: '{commit_message}'")
     
