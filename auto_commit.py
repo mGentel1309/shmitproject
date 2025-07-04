@@ -24,7 +24,7 @@ except ImportError:
     TIMEOUT = 30
     MAX_DIFF_SIZE = 2000
 
-def run_git_command(command):
+def run_git_command(command, show_output=False):
     """Выполнить git команду и вернуть результат"""
     try:
         result = subprocess.run(
@@ -33,9 +33,16 @@ def run_git_command(command):
             text=True, 
             check=True
         )
+        if show_output and result.stdout:
+            print(result.stdout)
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        print(f"Ошибка выполнения команды: {e}")
+        error_msg = f"Ошибка выполнения команды '{command}'"
+        if e.stderr:
+            error_msg += f"\nОшибка: {e.stderr.strip()}"
+        if e.stdout:
+            error_msg += f"\nВывод: {e.stdout.strip()}"
+        print(error_msg)
         return None
 
 def get_git_diff():
@@ -270,11 +277,32 @@ def main():
         # Спрашиваем про push
         push_confirm = input("🚀 Отправить на удаленный репозиторий? (y/n): ").lower().strip()
         if push_confirm in ['y', 'yes', 'д', 'да', '']:
-            push_result = run_git_command("git push")
-            if push_result is not None:
-                print("🎉 Изменения успешно отправлены!")
+            # Пробуем разные варианты push
+            current_branch = run_git_command("git branch --show-current")
+            
+            if current_branch:
+                print(f"📤 Отправляю ветку '{current_branch}'...")
+                # Сначала пробуем git push origin current_branch
+                push_result = run_git_command(f"git push origin {current_branch}", show_output=True)
+                
+                if push_result is not None:
+                    print("🎉 Изменения успешно отправлены!")
+                else:
+                    print("⚠️ Ошибка с указанием ветки, пробую простой push...")
+                    # Пробуем простой git push
+                    push_result = run_git_command("git push", show_output=True)
+                    
+                    if push_result is not None:
+                        print("🎉 Изменения успешно отправлены!")
+                    else:
+                        print("❌ Ошибка при отправке изменений")
+                        print("💡 Возможные причины:")
+                        print("   - Нет настроенного удаленного репозитория")
+                        print("   - Нет прав доступа")
+                        print("   - Проблемы с SSH ключами")
+                        print("   - Нужно сначала сделать 'git push --set-upstream origin main'")
             else:
-                print("❌ Ошибка при отправке изменений")
+                print("❌ Не удалось определить текущую ветку")
     else:
         print("❌ Ошибка создания коммита")
 
