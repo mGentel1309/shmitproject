@@ -1,5 +1,5 @@
 # Настройки API
-LM_STUDIO_URL = "http://178.23.149.133:1234/v1"  # Базовый URL
+LM_STUDIO_URL = "http://localhost:1234/v1"  # Базовый URL
 LM_STUDIO_MODEL = "claude-3.7-sonnet-reasoning-gemma3-12b"
 
 # Системный промт
