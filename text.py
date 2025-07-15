@@ -7,18 +7,17 @@ from config import (
     MAX_TOKENS,
     TEMPERATURE,
     TOP_P,
-    TIMEOUT,
-    MAX_DIFF_SIZE
+    TIMEOUT
 )
 
 def clean_response(text):
-    """Удаляет <think> теги и лишние размышления из ответа"""
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    text = re.sub(r'\(.*?\)', '', text)  # Удаляем скобочные комментарии
+    """Очищает ответ от служебных тегов и лишних пробелов"""
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)  # Удаляем теги размышлений
+    text = re.sub(r'[\s]+', ' ', text)  # Нормализуем пробелы
     return text.strip()
 
-def query_model(prompt, user_message, max_retries=3):
-    """Отправляет запрос к модели через LM Studio API"""
+def get_model_response(user_message):
+    """Получает ответ от модели через API"""
     headers = {"Content-Type": "application/json"}
 
     payload = {
@@ -33,49 +32,28 @@ def query_model(prompt, user_message, max_retries=3):
         "stream": False
     }
 
-    for attempt in range(max_retries):
-        try:
-            response = requests.post(
-                LM_STUDIO_URL,
-                json=payload,
-                headers=headers,
-                timeout=TIMEOUT
-            )
-            response.raise_for_status()
+    try:
+        response = requests.post(
+            f"{LM_STUDIO_URL}/chat/completions",  # Используем базовый URL из конфига
+            json=payload,
+            headers=headers,
+            timeout=TIMEOUT
+        )
+        response.raise_for_status()
+        result = response.json()
 
-            result = response.json()
-            if 'choices' in result and len(result['choices']) > 0:
-                return clean_response(result['choices'][0]['message']['content'])
+        if 'choices' in result and result['choices']:
+            return clean_response(result['choices'][0]['message']['content'])
 
-        except requests.exceptions.RequestException as e:
-            if attempt == max_retries - 1:
-                return f"Error after {max_retries} attempts: {str(e)}"
-            continue
+        return "Ошибка: пустой ответ от модели"
 
-    return "Error: No response from model"
-
-def analyze_code(code_block):
-    """Анализирует блок кода с помощью модели"""
-    if len(code_block) > MAX_DIFF_SIZE:
-        return "Error: Code block exceeds maximum size limit"
-
-    prompt = f"""Проанализируй следующий код и предоставь:
-    1. Краткое описание его функциональности
-    2. Потенциальные проблемы
-    3. Предложения по улучшению
-
-    Код:
-    {code_block}"""
-
-    return query_model(SYSTEM_PROMPT, prompt)
-
-def main():
-
-    user_input = input()
-
-
-    response = query_model(SYSTEM_PROMPT, user_input)
-    print(response)
+    except requests.exceptions.RequestException as e:
+        return f"Ошибка соединения: {str(e)}"
+    except Exception as e:
+        return f"Неожиданная ошибка: {str(e)}"
 
 if __name__ == "__main__":
-    main()
+    # Пример использования
+    user_input = input()
+    response = get_model_response(user_input)
+    print(response)
