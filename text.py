@@ -28,9 +28,6 @@ def get_ai_response(user_query: str) -> str:
         return f"Error: {str(e)}"
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1:
-        user_input = " ".join(sys.argv[1:])
-        print(get_ai_response(user_input))
-    else:
-        print("Usage: python main.py 'Your query here'")
+    user_input = input()
+    response = get_ai_response(user_input)
+    print(response)
