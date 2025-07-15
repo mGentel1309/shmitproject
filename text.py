@@ -1,59 +1,36 @@
 import requests
-import re
-from config import (
-    LM_STUDIO_URL,
-    LM_STUDIO_MODEL,
-    SYSTEM_PROMPT,
-    MAX_TOKENS,
-    TEMPERATURE,
-    TOP_P,
-    TIMEOUT
-)
+from config import MODEL_CONFIG, SYSTEM_PROMPT
 
-def clean_response(text):
-    """Очищает ответ от служебных тегов и лишних пробелов"""
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)  # Удаляем теги размышлений
-    text = re.sub(r'[\s]+', ' ', text)  # Нормализуем пробелы
-    return text.strip()
-
-def get_model_response(user_message):
-    """Получает ответ от модели через API"""
-    headers = {"Content-Type": "application/json"}
-
-    payload = {
-        "model": LM_STUDIO_MODEL,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message}
-        ],
-        "max_tokens": MAX_TOKENS,
-        "temperature": TEMPERATURE,
-        "top_p": TOP_P,
-        "stream": False
-    }
-
+def get_ai_response(user_query: str) -> str:
+    """
+    Получает ответ от модели на входной запрос.
+    Возвращает только текст ответа или сообщение об ошибке.
+    """
     try:
         response = requests.post(
-            f"{LM_STUDIO_URL}/chat/completions",  # Используем базовый URL из конфига
-            json=payload,
-            headers=headers,
-            timeout=TIMEOUT
+            url=MODEL_CONFIG["api_url"],
+            headers=MODEL_CONFIG["headers"],
+            json={
+                "model": MODEL_CONFIG["model"],
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_query}
+                ],
+                "temperature": MODEL_CONFIG["temperature"],
+                "max_tokens": MODEL_CONFIG["max_tokens"]
+            },
+            timeout=30
         )
         response.raise_for_status()
-        result = response.json()
+        return response.json()["choices"][0]["message"]["content"].strip()
 
-        if 'choices' in result and result['choices']:
-            return clean_response(result['choices'][0]['message']['content'])
-
-        return "Ошибка: пустой ответ от модели"
-
-    except requests.exceptions.RequestException as e:
-        return f"Ошибка соединения: {str(e)}"
     except Exception as e:
-        return f"Неожиданная ошибка: {str(e)}"
+        return f"Error: {str(e)}"
 
 if __name__ == "__main__":
-    # Пример использования
-    user_input = input()
-    response = get_model_response(user_input)
-    print(response)
+    import sys
+    if len(sys.argv) > 1:
+        user_input = " ".join(sys.argv[1:])
+        print(get_ai_response(user_input))
+    else:
+        print("Usage: python main.py 'Your query here'")
