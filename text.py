@@ -1,10 +1,10 @@
+# text.py
 import requests
 from config import MODEL_CONFIG, SYSTEM_PROMPT
 
 def get_ai_response(user_query: str) -> str:
     """
-    Получает ответ от модели на входной запрос.
-    Возвращает только текст ответа или сообщение об ошибке.
+    Получает ответ от модели через OpenRouter API
     """
     try:
         response = requests.post(
@@ -24,8 +24,12 @@ def get_ai_response(user_query: str) -> str:
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"].strip()
 
+    except requests.exceptions.HTTPError as err:
+        if response.status_code == 429:
+            return "Ошибка: Слишком много запросов (лимит Rate Limit)"
+        return f"HTTP ошибка: {err}"
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Ошибка: {str(e)}"
 
 if __name__ == "__main__":
     user_input = input()
