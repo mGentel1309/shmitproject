@@ -5,7 +5,7 @@ MODEL_CONFIG = {
     "model": "moonshotai/kimi-k2:free",  # Специфичная модель через OpenRouter
     "headers": {
         "Content-Type": "application/json",
-        "Authorization": "Bearer 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",
+        "Authorization": "Bearer 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",
         "HTTP-Referer": "https://github.com/mGentel1309/shmitproject",  # Обязательно для OpenRouter
         "X-Title": "Shmit Voice Assistant"  # Рекомендуется для OpenRouter
     },
